@@ -1,0 +1,148 @@
+from keras.layers import Input, Add, Dense, Activation, Flatten, Convolution2D, MaxPooling2D, ZeroPadding2D, \
+    AveragePooling2D, TimeDistributed
+from FixedBatchNormalization import FixedBatchNormalization
+from keras import backend as K
+
+
+def get_img_out_length(width, height):
+
+    # 计算经过basenet输出的feature map大小
+    def get_output_length(input_length):
+        # 0填充
+        input_length += 6
+        # 应用一次7的卷积，然后3的max polling 之后的几个resnet中的conv_block和identity_block没有改变大小
+        # 只是在第二和第三各conv_block的步长改为2后影响feature_map大小
+        # 当卷积核大小为1时，且步长也为1不改变feature map大小
+        # 另外conv2d函数中的padding模式为same时，输入与输出大小保持一致
+        filter_sizes = [7, 3, 1, 1]
+        stride = 2
+        for filter_size in filter_sizes:
+            input_length = (input_length - filter_size + stride) // stride
+        return input_length
+
+    return get_output_length(width), get_output_length(height)
+
+
+def identity_block(input_tensor, kernel_size, filters, stage, block, trainable=True):
+    nb_filter1, nb_filter2, nb_filter3 = filters
+
+    if K.image_dim_ordering() == 'tf':
+        bn_axis = 3
+    else:
+        bn_axis = 1
+
+    conv_name_base = 'res' + str(stage) + block + '_branch'
+    bn_name_base = 'bn' + str(stage) + block + '_branch'
+
+    x = Convolution2D(nb_filter1, (1, 1), name=conv_name_base + '2a', trainable=trainable)(input_tensor)
+    x = FixedBatchNormalization(axis=bn_axis, name=bn_name_base + '2a')(x)
+    x = Activation('relu')(x)
+
+    x = Convolution2D(nb_filter2, (kernel_size, kernel_size), padding='same', name=conv_name_base + '2b',
+                      trainable=trainable)(x)
+    x = FixedBatchNormalization(axis=bn_axis, name=bn_name_base + '2b')(x)
+    x = Activation('relu')(x)
+
+    x = Convolution2D(nb_filter3, (1, 1), name=conv_name_base + '2c', trainable=trainable)(x)
+    x = FixedBatchNormalization(axis=bn_axis, name=bn_name_base + '2c')(x)
+
+    x = Add()([x, input_tensor])
+    x = Activation('relu')(x)
+    return x
+
+
+def conv_block(input_tensor, kernel_size, filters, stage, block, strides=(2, 2), trainable=True):
+    nb_filter1, nb_filter2, nb_filter3 = filters
+    if K.image_dim_ordering() == 'tf':
+        bn_axis = 3
+    else:
+        bn_axis = 1
+
+    conv_name_base = 'res' + str(stage) + block + '_branch'
+    bn_name_base = 'bn' + str(stage) + block + '_branch'
+
+    x = Convolution2D(nb_filter1, (1, 1), strides=strides, name=conv_name_base + '2a', trainable=trainable)(
+        input_tensor)
+    x = FixedBatchNormalization(axis=bn_axis, name=bn_name_base + '2a')(x)
+    x = Activation('relu')(x)
+
+    x = Convolution2D(nb_filter2, (kernel_size, kernel_size), padding='same', name=conv_name_base + '2b',
+                      trainable=trainable)(x)
+    x = FixedBatchNormalization(axis=bn_axis, name=bn_name_base + '2b')(x)
+    x = Activation('relu')(x)
+
+    x = Convolution2D(nb_filter3, (1, 1), name=conv_name_base + '2c', trainable=trainable)(x)
+    x = FixedBatchNormalization(axis=bn_axis, name=bn_name_base + '2c')(x)
+
+    shortcut = Convolution2D(nb_filter3, (1, 1), strides=strides, name=conv_name_base + '1', trainable=trainable)(
+        input_tensor)
+    shortcut = FixedBatchNormalization(axis=bn_axis, name=bn_name_base + '1')(shortcut)
+
+    x = Add()([x, shortcut])
+    x = Activation('relu')(x)
+    return x
+
+
+def nn_base(input_tensor=None, trainable=False):
+    # Determine proper input shape
+    if K.image_dim_ordering() == 'th':
+        input_shape = (3, None, None)
+    else:
+        input_shape = (None, None, 3)
+
+    if input_tensor is None:
+        img_input = Input(shape=input_shape)
+    else:
+        if not K.is_keras_tensor(input_tensor):
+            img_input = Input(tensor=input_tensor, shape=input_shape)
+        else:
+            img_input = input_tensor
+
+    if K.image_dim_ordering() == 'tf':
+        bn_axis = 3
+    else:
+        bn_axis = 1
+
+    x = ZeroPadding2D((3, 3))(img_input)
+
+    x = Convolution2D(64, (7, 7), strides=(2, 2), name='conv1', trainable=trainable)(x)
+    x = FixedBatchNormalization(axis=bn_axis, name='bn_conv1')(x)
+    x = Activation('relu')(x)
+    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
+
+    x = conv_block(x, 3, [64, 64, 256], stage=2, block='a', strides=(1, 1), trainable=trainable)
+    x = identity_block(x, 3, [64, 64, 256], stage=2, block='b', trainable=trainable)
+    x = identity_block(x, 3, [64, 64, 256], stage=2, block='c', trainable=trainable)
+
+    x = conv_block(x, 3, [128, 128, 512], stage=3, block='a', trainable=trainable)
+    x = identity_block(x, 3, [128, 128, 512], stage=3, block='b', trainable=trainable)
+    x = identity_block(x, 3, [128, 128, 512], stage=3, block='c', trainable=trainable)
+    x = identity_block(x, 3, [128, 128, 512], stage=3, block='d', trainable=trainable)
+
+    x = conv_block(x, 3, [256, 256, 1024], stage=4, block='a', trainable=trainable)
+    x = identity_block(x, 3, [256, 256, 1024], stage=4, block='b', trainable=trainable)
+    x = identity_block(x, 3, [256, 256, 1024], stage=4, block='c', trainable=trainable)
+    x = identity_block(x, 3, [256, 256, 1024], stage=4, block='d', trainable=trainable)
+    x = identity_block(x, 3, [256, 256, 1024], stage=4, block='e', trainable=trainable)
+    x = identity_block(x, 3, [256, 256, 1024], stage=4, block='f', trainable=trainable)
+
+    return x
+
+
+def rpn(base_layers, num_anchors):
+    print('-----------x----------')
+    print(base_layers)
+    print('-----------x----------')
+    x = Convolution2D(512, (3, 3), padding='same', activation='relu', kernel_initializer='normal', name='rpn_conv1')(
+        base_layers)
+
+    x_class = Convolution2D(num_anchors, (1, 1), activation='sigmoid', kernel_initializer='uniform',
+                            name='rpn_out_class')(x)
+    x_regr = Convolution2D(num_anchors * 4, (1, 1), activation='linear', kernel_initializer='zero',
+                           name='rpn_out_regress')(x)
+
+    return [x_class, x_regr, base_layers]
+
+
+if __name__ == '__main__':
+    print(get_img_out_length(600, 700))
