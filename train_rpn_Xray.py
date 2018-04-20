@@ -7,12 +7,14 @@ import time
 import resnet as nn
 import numpy as np
 import losses as losses_fn
+import roi_helpers as roi_helpers
 from get_data import get_data
 from keras import backend as K
 from keras.layers import Input
 from keras.models import Model
 from keras.optimizers import Adam
 from keras.utils import generic_utils
+from visual_rpn import visual_rpn
 
 
 def train_rpn():
@@ -106,14 +108,26 @@ def train_rpn():
                         print('RPN不生产覆盖的边框，检查RPN的设置或者继续训练')
 
                 X, Y, img_data = next(data_gen_train)
+                # Y[0].shape (1, X, Y, 18)
 
+                # X是input data，Y是labels
                 loss_rpn = model_rpn.train_on_batch(X, Y)
 
                 p_rpn = model_rpn.predict_on_batch(X)
+
+                result = roi_helpers.rpn_to_roi(p_rpn[0], p_rpn[1], cfg, K.image_dim_ordering(), use_regr=True,
+                                                overlap_thresh=0.7,
+                                                max_boxes=10)
+                # visual_rpn(img_data, result)
+                print('-------result------')
+                # print('-------result--------')
+                # print(result[250])
+                # print('-------result--------')
                 # print('-------p_rpn--------')
                 # print(p_rpn[0].shape)
                 # print(p_rpn[1].shape)
-                # print(len(p_rpn[1]))
+                # (1, 38, 48, 9)
+                # (1, 38, 48, 36)
                 # print('-------p_rpn--------')
                 losses[iter_num, 0] = loss_rpn[1]
                 losses[iter_num, 1] = loss_rpn[2]

@@ -228,7 +228,6 @@ def calc_rpn(cfg, img_data, width, height, resized_width, resized_height, img_le
         # 这里留128个pos，其他的都置为0
         # can't multiply sequence by non-int of type 'float'
         # 如果不把后面那部分转换为int是不可以的
-        # 玄学，之前代码没问题
         val_locs = random.sample(range(len(pos_locs[0])), int(len(pos_locs[0]) - num_regions / 2))
         y_is_box_valid[0, pos_locs[0][val_locs], pos_locs[1][val_locs], pos_locs[2][val_locs]] = 0
         num_pos = num_regions / 2

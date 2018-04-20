@@ -64,6 +64,10 @@ def get_anchor_gt(all_img_data, classes_count, cfg, img_length_calc_function, ba
 
                 resized_width, resized_height, x_img = get_new_img(width, height, x_img, cfg.img_size)
 
+                # img_data的width和height可以做相应的更新
+                img_data_aug.width = resized_width
+                img_data_aug.height = resized_height
+
                 try:
                     y_rpn_cls, y_rpn_regr = calc_rpn(cfg, img_data_aug, width, height, resized_width, resized_height, img_length_calc_function)
                     # print('---------------------')

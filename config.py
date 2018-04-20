@@ -45,7 +45,7 @@ class Config:
         self.model_path = './model/frcnn_metalcup.hdf5'
 
         #
-        self.num_epochs = 1000
+        self.num_epochs = 50
 
         #
         self.verbose = True
