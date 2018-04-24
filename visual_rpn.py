@@ -6,13 +6,13 @@ import os
 
 def visual_rpn(filename, resized_width, resized_height, result):
     # assert result.shape[0] == 10
-    assert result.shape[1] == 4
+    # assert result.shape[1] == 4
     img = cv2.imread(filename)
     height, width = img.shape[:2]
     cfg = Config()
     x_factor = (resized_width / float(width)) / cfg.rpn_stride
     y_factor = (resized_height / float(height)) / cfg.rpn_stride
-    bboxes = np.zeros((10, 4))
+    bboxes = np.zeros((int(result.shape[0]), 5))
     for idx in range(result.shape[0]):
         x1 = result[idx, 0]
         y1 = result[idx, 1]
@@ -26,6 +26,7 @@ def visual_rpn(filename, resized_width, resized_height, result):
         bboxes[idx, 1] = y1_origin
         bboxes[idx, 2] = x2_origin
         bboxes[idx, 3] = y2_origin
+        bboxes[idx, 4] = result[idx, 4]
     visual_img = draw_boxes_and_label_on_image_cv2(img, bboxes)
     result_path = './results_images/{}.bmp'.format(os.path.basename(filename).split('.')[0])
     print('resule saved into ', result_path)
@@ -39,6 +40,7 @@ def draw_boxes_and_label_on_image_cv2(img, bboxes):
         bb_top = int(bboxes[idx][1])
         bb_width = int(bboxes[idx][2])
         bb_height = int(bboxes[idx][3])
-        img = cv2.rectangle(img, (bb_left, bb_top), (bb_width, bb_height), (int(idx * 20), int(idx * 20), int(idx * 20)), 2)
+        class_num = int(bboxes[idx][4])
+        img = cv2.rectangle(img, (bb_left, bb_top), (bb_width, bb_height), (class_num * 10, class_num * 20, class_num * 30), 2)
     return img
 

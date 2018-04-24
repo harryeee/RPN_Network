@@ -14,7 +14,6 @@ from keras.layers import Input
 from keras.models import Model
 from keras.optimizers import Adam
 from keras.utils import generic_utils
-from visual_rpn import visual_rpn
 
 
 def train_rpn():
@@ -49,6 +48,7 @@ def train_rpn():
     # 对训练数据进行打乱
     random.shuffle(train_imgs)
 
+    # 类别映射
     # 得到每一个锚的训练数据，供RPN网络训练使用
     data_gen_train = data_generators.get_anchor_gt(train_imgs, classes_count, cfg, nn.get_img_out_length,
                                                    K.image_dim_ordering(), mode='train')
@@ -67,7 +67,7 @@ def train_rpn():
 
     # define the RPN, built on the base layers
     num_anchors = len(cfg.anchor_box_scales) * len(cfg.anchor_box_ratios)
-    rpn = nn.rpn(shared_layers, num_anchors)
+    rpn = nn.rpn(shared_layers, num_anchors, cfg.num_regions)
     model_rpn = Model(img_input, rpn[:2])
 
     try:

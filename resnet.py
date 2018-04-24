@@ -129,16 +129,16 @@ def nn_base(input_tensor=None, trainable=False):
     return x
 
 
-def rpn(base_layers, num_anchors):
+def rpn(base_layers, num_anchors, num_regions):
     print('-----------x----------')
     print(base_layers)
     print('-----------x----------')
     x = Convolution2D(512, (3, 3), padding='same', activation='relu', kernel_initializer='normal', name='rpn_conv1')(
         base_layers)
 
-    x_class = Convolution2D(num_anchors, (1, 1), activation='sigmoid', kernel_initializer='uniform',
+    x_class = Convolution2D(num_anchors * num_regions, (1, 1), activation='sigmoid', kernel_initializer='uniform',
                             name='rpn_out_class')(x)
-    x_regr = Convolution2D(num_anchors * 4, (1, 1), activation='linear', kernel_initializer='zero',
+    x_regr = Convolution2D(num_anchors * num_regions * 4, (1, 1), activation='linear', kernel_initializer='zero',
                            name='rpn_out_regress')(x)
 
     return [x_class, x_regr, base_layers]

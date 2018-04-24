@@ -88,7 +88,7 @@ def predict(args_):
 
     # 定义RPN网络结构
     num_anchors = len(cfg.anchor_box_scales) * len(cfg.anchor_box_ratios)
-    rpn_layers = nn.rpn(shared_layers, num_anchors)
+    rpn_layers = nn.rpn(shared_layers, num_anchors, cfg.num_regions)
 
     model_rpn = Model(img_input, rpn_layers)
     print('从{}加载权重'.format(cfg.model_path))
@@ -108,7 +108,7 @@ def predict(args_):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--path', '-p', default='/home/nice/Pictures/Xray_metalcup/', help='image path')
+    parser.add_argument('--path', '-p', default='/home/nice/Pictures/Xray_dataset/', help='image path')
     return parser.parse_args()
 
 

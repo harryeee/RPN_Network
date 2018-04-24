@@ -1,5 +1,6 @@
 import numpy as np
 import random
+from config import Config
 
 
 # 计算两个矩形框的iou值
@@ -39,6 +40,7 @@ def calc_rpn(cfg, img_data, width, height, resized_width, resized_height, img_le
     downscale = float(cfg.rpn_stride)
     anchor_sizes = cfg.anchor_box_scales
     anchor_ratios = cfg.anchor_box_ratios
+    num_regions = cfg.num_regions
     num_anchors = len(anchor_sizes) * len(anchor_ratios)
     ratios_amount = len(anchor_ratios)
     num_bboxes = len(img_data.bboxes)
@@ -47,23 +49,24 @@ def calc_rpn(cfg, img_data, width, height, resized_width, resized_height, img_le
     (output_width, output_height) = img_length_calc_function(resized_width, resized_height)
 
     # 初始化输出目标
-    y_rpn_overlap = np.zeros((output_height, output_width, num_anchors))
-    y_is_box_valid = np.zeros((output_height, output_width, num_anchors))
-    y_rpn_regr = np.zeros((output_height, output_width, num_anchors * 4))
+    y_rpn_overlap = np.zeros((output_height, output_width, num_anchors * num_regions))
+    y_is_box_valid = np.zeros((output_height, output_width, num_anchors * num_regions))
+    y_rpn_regr = np.zeros((output_height, output_width, num_anchors * num_regions * 4))
 
     num_anchors_for_bbox = np.zeros(num_bboxes).astype(int)
-    best_anchor_for_bbox = -1 * np.ones((num_bboxes, 4)).astype(int)
+    best_anchor_for_bbox = -1 * np.ones((num_bboxes, 5)).astype(int)
     best_iou_for_bbox = np.zeros(num_bboxes).astype(np.float32)
     best_x_for_bbox = np.zeros((num_bboxes, 4)).astype(int)
     best_dx_for_bbox = np.zeros((num_bboxes, 4)).astype(np.float32)
 
     # 得到ground truth框的坐标，并且由于图像大小改变重新调整其值
-    gta = np.zeros((num_bboxes, 4))
+    gta = np.zeros((num_bboxes, 5))
     for bbox_num, bbox in enumerate(img_data.bboxes):
         gta[bbox_num, 0] = bbox.x1 * (resized_width / float(width))
         gta[bbox_num, 1] = bbox.x2 * (resized_width / float(width))
         gta[bbox_num, 2] = bbox.y1 * (resized_height / float(height))
         gta[bbox_num, 3] = bbox.y2 * (resized_height / float(height))
+        gta[bbox_num, 4] = int(cfg.class_map[bbox.class_name])
 
     # rpn ground truth
     # 遍历所有的anchor组合
@@ -131,7 +134,7 @@ def calc_rpn(cfg, img_data, width, height, resized_width, resized_height, img_le
 
                             # 所有的GT框都应该有一个锚点框与之对应，有一个我们认为是best的框
                             if curr_iou > best_iou_for_bbox[bbox_num]:
-                                best_anchor_for_bbox[bbox_num] = [jy, ix, anchor_ratio_idx, anchor_size_idx]
+                                best_anchor_for_bbox[bbox_num] = [jy, ix, anchor_ratio_idx, anchor_size_idx, int(gta[bbox_num, 4])]
                                 best_iou_for_bbox[bbox_num] = curr_iou
                                 best_x_for_bbox[bbox_num, :] = [x1_anc, x2_anc, y1_anc, y2_anc]
                                 best_dx_for_bbox[bbox_num, :] = [tx, ty, tw, th]
@@ -159,17 +162,17 @@ def calc_rpn(cfg, img_data, width, height, resized_width, resized_height, img_le
                     # ，只要保证第三列的序不重复，只不过也是另一种表示方法了
                     # 这里是 0 + 3 * 0 = 0, 1 + 3 * 0 = 1, ... , 2 + 3 * 2 = 8
                     if bbox_type == 'neg':
-                        y_is_box_valid[jy, ix, anchor_ratio_idx + ratios_amount * anchor_size_idx] = 1
-                        y_rpn_overlap[jy, ix, anchor_ratio_idx + ratios_amount * anchor_size_idx] = 0
+                        y_is_box_valid[jy, ix, anchor_ratio_idx + ratios_amount * anchor_size_idx + (ratios_amount * len(anchor_sizes)) * int(gta[bbox_num, 4])] = 1
+                        y_rpn_overlap[jy, ix, anchor_ratio_idx + ratios_amount * anchor_size_idx + (ratios_amount * len(anchor_sizes)) * int(gta[bbox_num, 4])] = 0
                     elif bbox_type == 'neutral':
-                        y_is_box_valid[jy, ix, anchor_ratio_idx + ratios_amount * anchor_size_idx] = 0
-                        y_rpn_overlap[jy, ix, anchor_ratio_idx + ratios_amount * anchor_size_idx] = 0
+                        y_is_box_valid[jy, ix, anchor_ratio_idx + ratios_amount * anchor_size_idx + (ratios_amount * len(anchor_sizes)) * int(gta[bbox_num, 4])] = 0
+                        y_rpn_overlap[jy, ix, anchor_ratio_idx + ratios_amount * anchor_size_idx + (ratios_amount * len(anchor_sizes)) * int(gta[bbox_num, 4])] = 0
                     elif bbox_type == 'pos':
-                        y_is_box_valid[jy, ix, anchor_ratio_idx + ratios_amount * anchor_size_idx] = 1
-                        y_rpn_overlap[jy, ix, anchor_ratio_idx + ratios_amount * anchor_size_idx] = 1
+                        y_is_box_valid[jy, ix, anchor_ratio_idx + ratios_amount * anchor_size_idx + (ratios_amount * len(anchor_sizes)) * int(gta[bbox_num, 4])] = 1
+                        y_rpn_overlap[jy, ix, anchor_ratio_idx + ratios_amount * anchor_size_idx + (ratios_amount * len(anchor_sizes)) * int(gta[bbox_num, 4])] = 1
 
-                        # 确定每个start点的值，总范围是0到num_anchors * 4 = 36
-                        start = 4 * (anchor_ratio_idx + ratios_amount * anchor_size_idx)
+                        # 确定每个start点的值，总范围是0到num_anchors * num_regions * 4 = 96
+                        start = 4 * (anchor_ratio_idx + ratios_amount * anchor_size_idx + (ratios_amount * len(anchor_sizes)) * int(gta[bbox_num, 4]))
                         # 0 - 4
                         y_rpn_regr[jy, ix, start:start+4] = best_regr
 
@@ -192,15 +195,18 @@ def calc_rpn(cfg, img_data, width, height, resized_width, resized_height, img_le
             # best_anchor_for_bbox[idx, 1] = jx
             # best_anchor_for_bbox[idx, 2] = anchor_ratio_idx
             # best_anchor_for_bbox[idx, 3] = anchor_size_idx
+            # best-acnhor_for_bbox[idx, 4] = class
             y_is_box_valid[
                 best_anchor_for_bbox[idx, 0], best_anchor_for_bbox[idx, 1], best_anchor_for_bbox[
                     idx, 2] + ratios_amount *
-                best_anchor_for_bbox[idx, 3]] = 1
+                best_anchor_for_bbox[idx, 3] +
+                (ratios_amount * len(anchor_sizes)) * int(best_anchor_for_bbox[idx, 4])] = 1
             y_rpn_overlap[
                 best_anchor_for_bbox[idx, 0], best_anchor_for_bbox[idx, 1], best_anchor_for_bbox[
                     idx, 2] + ratios_amount *
-                best_anchor_for_bbox[idx, 3]] = 1
-            start = 4 * (best_anchor_for_bbox[idx, 2] + ratios_amount * best_anchor_for_bbox[idx, 3])
+                best_anchor_for_bbox[idx, 3] +
+                (ratios_amount * len(anchor_sizes)) * int(best_anchor_for_bbox[idx, 4])] = 1
+            start = 4 * (best_anchor_for_bbox[idx, 2] + ratios_amount * best_anchor_for_bbox[idx, 3] + (ratios_amount * len(anchor_sizes)) * int(gta[bbox_num, 4]))
             y_rpn_regr[best_anchor_for_bbox[idx, 0], best_anchor_for_bbox[idx, 1], start:start + 4] = best_dx_for_bbox[idx, :]
 
     # 改变矩阵序列，相当于将anchor的序号放在第一列
@@ -237,18 +243,20 @@ def calc_rpn(cfg, img_data, width, height, resized_width, resized_height, img_le
         y_is_box_valid[0, neg_locs[0][val_locs], neg_locs[1][val_locs], neg_locs[2][val_locs]] = 0
 
     # ------y_rpn_cls-------
-    # (1, 9, 38, 54)
-    # (1, 9, 38, 54)
-    # (1, 18, 38, 54)
+    # (1, num_anchors, width, height)                   y_is_box_valid 代表是否这个锚点有效
+    # (1, num_anchors * num_regions, width, height)     y_rpn_overlap 代表这个锚点是哪一个锚点下的哪个类别
+    # (1, num_anchors + num_anchors * num_regions, width, height)
     # ------y_rpn_cls-------
-    # y_is_box_valid 代表是否这个锚点有效，y_rpn_overlap 代表这个锚点是作为pos还是neg
     y_rpn_cls = np.concatenate([y_is_box_valid, y_rpn_overlap], axis=1)
-
+    print('------y_rpn_cls-------')
+    print(y_rpn_cls.shape)
     # ------y_rpn_regr-------
     # (1, 9, 38, 54)
     # (1, 72, 38, 54)
     # ------y_rpn_regr-------
     y_rpn_regr = np.concatenate([np.repeat(y_rpn_overlap, 4, axis=1), y_rpn_regr], axis=1)
+    print(y_rpn_regr.shape)
+    print('------y_rpn_cls-------')
     return np.copy(y_rpn_cls), np.copy(y_rpn_regr)
 
 
@@ -257,6 +265,8 @@ if __name__ == '__main__':
     # tee_te = np.expand_dims(tee, axis=1)
     # print(tee.shape)
     # print(tee_te.shape)
-    list_test = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    slice_test = random.sample(list_test, 5)
-    print(slice_test)
+    # list_test = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    # slice_test = random.sample(list_test, 5)
+    # print(slice_test)
+    config = Config()
+    print(config.class_map['metal_cup'])
